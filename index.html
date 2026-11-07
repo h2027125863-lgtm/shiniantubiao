@@ -1,0 +1,796 @@
+
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="normal">
+
+<title>2016—2025年火灾数据交互式玫瑰图</title>
+
+<style>
+:root {
+  --ink: #60402e;
+  --ink-muted: #80614c;
+  --grid: rgba(155,94,56,.34);
+
+  --death: #FFE0B2;
+  --injury: #FFCC80;
+  --fire: #FFAB40;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  min-height: 100%;
+  background: transparent !important;
+}
+
+body {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-family:
+    "Noto Serif SC",
+    "Songti SC",
+    "SimSun",
+    Georgia,
+    serif;
+  overflow-x: hidden;
+}
+
+.graphic {
+  position: relative;
+  width: min(100%, 960px);
+  aspect-ratio: 1200 / 1300;
+  background: transparent !important;
+  isolation: isolate;
+  touch-action: pan-y;
+}
+
+#rose {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  background: transparent !important;
+}
+
+/* 网格与引导线 */
+.guide {
+  fill: none;
+  stroke: var(--grid);
+  stroke-width: 1.4;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
+.hairline {
+  fill: none;
+  stroke: var(--grid);
+  stroke-width: .8;
+  opacity: .53;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
+/* 年份标签 */
+.year {
+  fill: var(--ink);
+  font-size: 24px;
+  font-weight: 650;
+  text-anchor: middle;
+  dominant-baseline: central;
+  letter-spacing: .5px;
+  pointer-events: none;
+  paint-order: stroke;
+  stroke: rgba(255,252,246,.82);
+  stroke-width: 3px;
+}
+
+.year.focused {
+  fill: #A94F1B;
+  font-weight: 800;
+}
+
+/* 图例 */
+.legend-label {
+  fill: var(--ink);
+  font-size: 23px;
+  letter-spacing: 1px;
+  font-weight: 600;
+}
+
+.legend-swatch {
+  stroke: rgba(166,106,62,.22);
+  stroke-width: 1.5px;
+}
+
+/* 玫瑰图扇区 */
+.rose-segment {
+  cursor: crosshair;
+  stroke: rgba(255,255,255,.78);
+  stroke-width: 1.8px;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+
+  transition:
+    filter .18s ease,
+    opacity .18s ease;
+
+  transform-box: view-box;
+  transform-origin: 600px 670px;
+}
+
+.rose-segment:focus {
+  outline: none;
+}
+
+.rose-segment:focus-visible {
+  stroke: #a6552b;
+  stroke-width: 4px;
+}
+
+/* 鼠标悬浮时，其余层级变淡 */
+.graphic.is-hovered
+.rose-segment:not(.active) {
+  opacity: .55;
+}
+
+/* 当前高亮层级 */
+.rose-segment.active {
+  opacity: 1 !important;
+  filter: drop-shadow(
+    0 0 12px rgba(206,106,28,.33)
+  );
+  stroke: #fff5e9;
+  stroke-width: 2.6px;
+}
+
+/* 悬浮提示框 */
+.tooltip {
+  position: absolute;
+  z-index: 5;
+
+  min-width: 206px;
+  max-width: min(300px,85vw);
+
+  opacity: 0;
+
+  transform:
+    translate(-50%,-105%)
+    translateY(8px);
+
+  pointer-events: none;
+
+  transition:
+    opacity .16s ease,
+    transform .16s ease;
+
+  padding: 13px 16px 12px;
+  border-radius: 10px;
+
+  color: #fcebd4;
+  background: rgba(35,29,25,.96);
+
+  border:
+    1px solid rgba(255,210,151,.21);
+
+  box-shadow:
+    0 10px 33px rgba(0,0,0,.25);
+
+  font-family:
+    "Noto Sans SC",
+    "Microsoft YaHei",
+    sans-serif;
+
+  line-height: 1.6;
+}
+
+.tooltip.visible {
+  opacity: 1;
+
+  transform:
+    translate(-50%,-100%)
+    translateY(-12px);
+}
+
+.tooltip::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+
+  transform: translateX(-50%);
+
+  border: 7px solid transparent;
+  border-top-color: rgba(35,29,25,.96);
+}
+
+.tt-year {
+  font-weight: 750;
+  font-size: 18px;
+  margin-bottom: 5px;
+  letter-spacing: 1px;
+  color: #ffe7c2;
+}
+
+.tt-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 1px 0;
+  opacity: .81;
+  font-size: 13px;
+}
+
+.tt-row b {
+  white-space: nowrap;
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+
+.tt-row.active {
+  opacity: 1;
+  color: #ffbc71;
+}
+
+.tt-row.active b {
+  font-size: 17px;
+}
+
+/* 深色背景适配 */
+.dark-mode {
+  --ink: #f3dfc7;
+  --ink-muted: #e3cab1;
+  --grid: rgba(244,211,167,.4);
+}
+
+.dark-mode .year {
+  stroke: rgba(15,21,26,.4);
+}
+
+/* 初始展开动画 */
+@keyframes bloom {
+  0% {
+    opacity: 0;
+    transform: scale(.89);
+  }
+
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .rose-segment {
+    animation:
+      bloom .8s
+      cubic-bezier(.2,.9,.2,1)
+      backwards;
+
+    animation-delay: var(--delay,0ms);
+  }
+}
+
+@media (max-width:560px) {
+  .tooltip {
+    padding: 9px 11px;
+    min-width: 168px;
+  }
+
+  .tt-year {
+    font-size: 15px;
+  }
+
+  .tt-row,
+  .tt-row b {
+    font-size: 12px;
+  }
+
+  .tt-row.active b {
+    font-size: 14px;
+  }
+}
+</style>
+</head>
+
+<body>
+
+<div class="graphic" id="graphic">
+
+  <svg
+    id="rose"
+    viewBox="0 0 1200 1300"
+    xmlns="http://www.w3.org/2000/svg"
+    role="img"
+    aria-label="2016年至2025年火灾多层玫瑰图"
+  >
+    <g id="guide"></g>
+    <g id="sectors"></g>
+    <g id="labels"></g>
+    <g id="legend"></g>
+  </svg>
+
+  <div
+    id="tooltip"
+    class="tooltip"
+    role="status"
+    aria-live="polite"
+  ></div>
+
+</div>
+
+<script>
+(() => {
+  "use strict";
+
+  // ==========================
+  // 1. 火灾年度数据
+  // ==========================
+
+  const data = [
+    {year:2016,fire:31.2,death:1582,injury:1065},
+    {year:2017,fire:28.1,death:1390,injury:881},
+    {year:2018,fire:23.7,death:1407,injury:798},
+    {year:2019,fire:23.3,death:1335,injury:837},
+    {year:2020,fire:25.2,death:1183,injury:775},
+    {year:2021,fire:74.8,death:1987,injury:2225},
+    {year:2022,fire:82.5,death:2053,injury:2122},
+    {year:2023,fire:87.8,death:1796,injury:2540},
+    {year:2024,fire:90.8,death:2001,injury:2665},
+    {year:2025,fire:84.1,death:1827,injury:2161}
+  ];
+
+  // ==========================
+  // 2. 三层玫瑰图配置
+  // ==========================
+
+  const layers = [
+    {
+      key: "death",
+      name: "死亡人数",
+      unit: "人",
+      color: "#FFE0B2",
+      opacity: .80,
+      base: 67,
+      extra: 45
+    },
+    {
+      key: "injury",
+      name: "受伤人数",
+      unit: "人",
+      color: "#FFCC80",
+      opacity: .77,
+      base: 78,
+      extra: 58
+    },
+    {
+      key: "fire",
+      name: "接报火灾数",
+      unit: "万起",
+      color: "#FFAB40",
+      opacity: .77,
+      base: 102,
+      extra: 145
+    }
+  ];
+
+  // 各项指标独立归一化
+  const maxValues = {
+    death: Math.max(...data.map(d => d.death)),
+    injury: Math.max(...data.map(d => d.injury)),
+    fire: Math.max(...data.map(d => d.fire))
+  };
+
+  // ==========================
+  // 3. SVG基础设置
+  // ==========================
+
+  const NS = "http://www.w3.org/2000/svg";
+
+  const CX = 600;
+  const CY = 670;
+  const R0 = 59;
+
+  const sectorGroup =
+    document.getElementById("sectors");
+
+  const labelsGroup =
+    document.getElementById("labels");
+
+  const guideGroup =
+    document.getElementById("guide");
+
+  const legendGroup =
+    document.getElementById("legend");
+
+  const tooltip =
+    document.getElementById("tooltip");
+
+  const root =
+    document.getElementById("graphic");
+
+  const svg =
+    document.getElementById("rose");
+
+  // URL后加?theme=dark
+  // 可用于深色背景
+  if (
+    new URLSearchParams(location.search)
+      .get("theme") === "dark"
+  ) {
+    root.classList.add("dark-mode");
+  }
+
+  // 创建SVG元素
+  function make(tag, attrs = {}, text = "") {
+
+    const el = document.createElementNS(NS,tag);
+
+    Object.entries(attrs).forEach(([k,v]) => {
+      el.setAttribute(k,v);
+    });
+
+    if (text) {
+      el.textContent = text;
+    }
+
+    return el;
+  }
+
+  // 极坐标转换
+  function polar(r, deg) {
+
+    const a = deg * Math.PI / 180;
+
+    return {
+      x: CX + r * Math.sin(a),
+      y: CY - r * Math.cos(a)
+    };
+  }
+
+  function pt(p) {
+    return `${p.x.toFixed(3)} ${p.y.toFixed(3)}`;
+  }
+
+  // 绘制扇环
+  function arcWedge(r1,r2,a1,a2) {
+
+    const p1 = polar(r2,a1);
+    const p2 = polar(r2,a2);
+    const p3 = polar(r1,a2);
+    const p4 = polar(r1,a1);
+
+    const large = (a2-a1)>180 ? 1 : 0;
+
+    return `
+      M ${pt(p1)}
+      A ${r2} ${r2} 0 ${large} 1 ${pt(p2)}
+      L ${pt(p3)}
+      A ${r1} ${r1} 0 ${large} 0 ${pt(p4)}
+      Z
+    `;
+  }
+
+  // ==========================
+  // 4. 绘制参考圆与引导线
+  // ==========================
+
+  [170,270,370,510].forEach((r,i) => {
+
+    guideGroup.appendChild(
+      make("circle",{
+        cx:CX,
+        cy:CY,
+        r:r,
+        class:"guide",
+        opacity:i===3?".76":".26"
+      })
+    );
+
+  });
+
+  for (let i=0;i<10;i++) {
+
+    const angle = i*36;
+
+    const p1 = polar(86,angle-18);
+    const p2 = polar(520,angle-18);
+
+    guideGroup.appendChild(
+      make("path",{
+        d:`M ${pt(p1)} L ${pt(p2)}`,
+        class:"hairline"
+      })
+    );
+  }
+
+  // ==========================
+  // 5. 绘制图例
+  // ==========================
+
+  let lx = 134;
+
+  layers.forEach(layer => {
+
+    const w =
+      layer.key==="fire" ? 310 :
+      layer.key==="injury" ? 290 : 280;
+
+    const g = make("g");
+
+    g.appendChild(
+      make("rect",{
+        x:lx,
+        y:69,
+        width:39,
+        height:18,
+        rx:7,
+        fill:layer.color,
+        "fill-opacity":layer.opacity,
+        class:"legend-swatch"
+      })
+    );
+
+    g.appendChild(
+      make("text",{
+        x:lx+51,
+        y:84,
+        class:"legend-label"
+      },`${layer.name}（${layer.unit}）`)
+    );
+
+    legendGroup.appendChild(g);
+
+    lx += w;
+  });
+
+  // ==========================
+  // 6. 绘制10个年份扇区
+  // ==========================
+
+  const yearLabels = new Map();
+  const paths = [];
+
+  data.forEach((d,i) => {
+
+    const center = i*36;
+
+    const st = center-18+1.35;
+    const en = center+18-1.35;
+
+    let r = R0;
+
+    layers.forEach((layer,j) => {
+
+      const h =
+        layer.base +
+        layer.extra *
+        (d[layer.key]/maxValues[layer.key]);
+
+      const path = make("path",{
+        d:arcWedge(r,r+h,st,en),
+        class:"rose-segment",
+        fill:layer.color,
+        "fill-opacity":layer.opacity,
+        tabindex:"0",
+        role:"button",
+        "aria-label":
+          `${d.year}年，${layer.name}` +
+          `${d[layer.key]}${layer.unit}`,
+        style:
+          `--delay:${120+i*60+j*70}ms`
+      });
+
+      const info = {
+        year:d.year,
+        layer:layer.key,
+        value:d[layer.key],
+        datum:d
+      };
+
+      paths.push(path);
+
+      path.dataset.year = d.year;
+      path.dataset.layer = layer.key;
+
+      // 鼠标移入
+      path.addEventListener(
+        "pointerenter",
+        e => show(info,path,e)
+      );
+
+      // 鼠标移动
+      path.addEventListener(
+        "pointermove",
+        e => move(e)
+      );
+
+      // 鼠标离开
+      path.addEventListener(
+        "pointerleave",
+        hide
+      );
+
+      // 键盘聚焦
+      path.addEventListener(
+        "focus",
+        () => show(info,path,null)
+      );
+
+      path.addEventListener("blur",hide);
+
+      // 点击
+      path.addEventListener(
+        "click",
+        e => show(info,path,e)
+      );
+
+      sectorGroup.appendChild(path);
+
+      // 每一层紧密连接
+      r += h;
+    });
+
+    // 固定年份标签
+    const yearPos = polar(558,center);
+
+    const yearLabel = make("text",{
+      x:yearPos.x,
+      y:yearPos.y,
+      class:"year"
+    },`${d.year}年`);
+
+    labelsGroup.appendChild(yearLabel);
+
+    yearLabels.set(d.year,yearLabel);
+  });
+
+  // ==========================
+  // 7. 悬浮提示框
+  // ==========================
+
+  let current = null;
+
+  function tooltipHTML(info) {
+
+    const {year,layer,datum} = info;
+
+    const items = [
+      [
+        "death",
+        "死亡人数",
+        `${datum.death.toLocaleString("zh-CN")} 人`
+      ],
+      [
+        "injury",
+        "受伤人数",
+        `${datum.injury.toLocaleString("zh-CN")} 人`
+      ],
+      [
+        "fire",
+        "接报火灾数",
+        `${datum.fire.toFixed(1)} 万起`
+      ]
+    ];
+
+    return `
+      <div class="tt-year">${year} 年</div>
+      ${items.map(([key,label,val]) => `
+        <div class="tt-row ${layer===key?"active":""}">
+          <span>${label}</span>
+          <b>${val}</b>
+        </div>
+      `).join("")}
+    `;
+  }
+
+  function show(info,path,e) {
+
+    current = info;
+
+    root.classList.add("is-hovered");
+
+    paths.forEach(p => {
+      p.classList.toggle("active",p===path);
+    });
+
+    yearLabels.forEach((label,yr) => {
+      label.classList.toggle(
+        "focused",
+        yr===info.year
+      );
+    });
+
+    tooltip.innerHTML = tooltipHTML(info);
+    tooltip.classList.add("visible");
+
+    if (
+      e &&
+      Number.isFinite(e.clientX)
+    ) {
+      move(e);
+    } else {
+
+      const rect = root.getBoundingClientRect();
+      const b = path.getBoundingClientRect();
+
+      setTooltip(
+        (b.left+b.right)/2-rect.left,
+        b.top-rect.top
+      );
+    }
+  }
+
+  function move(e) {
+
+    if (!current) return;
+
+    const rect = root.getBoundingClientRect();
+
+    setTooltip(
+      e.clientX-rect.left,
+      e.clientY-rect.top
+    );
+  }
+
+  function setTooltip(x,y) {
+
+    const rect = root.getBoundingClientRect();
+
+    const w = tooltip.offsetWidth || 225;
+
+    const left = Math.max(
+      w/2+7,
+      Math.min(rect.width-w/2-7,x)
+    );
+
+    const top = Math.max(
+      130,
+      Math.min(rect.height-16,y)
+    );
+
+    tooltip.style.left = `${left}px`;
+    tooltip.style.top = `${top}px`;
+  }
+
+  function hide() {
+
+    current = null;
+
+    tooltip.classList.remove("visible");
+
+    root.classList.remove("is-hovered");
+
+    paths.forEach(p => {
+      p.classList.remove("active");
+    });
+
+    yearLabels.forEach(label => {
+      label.classList.remove("focused");
+    });
+  }
+
+  svg.addEventListener("pointerleave",hide);
+
+  // 点击图表外部，关闭提示框
+  document.addEventListener(
+    "pointerdown",
+    e => {
+      if (!root.contains(e.target)) hide();
+    }
+  );
+
+})();
+</script>
+
+</body>
+</html>
